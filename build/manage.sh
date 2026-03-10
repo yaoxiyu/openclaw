@@ -4,7 +4,7 @@ set -euo pipefail
 # Multi-instance management script for OpenClaw Docker deployments.
 #
 # Usage:
-#   ./manage.sh <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE]
+#   ./manage.sh <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE] [--custom-bind-host IP]
 #   ./manage.sh <instance> stop
 #   ./manage.sh <instance> restart
 #   ./manage.sh <instance> status
@@ -45,7 +45,7 @@ fail() {
 
 usage() {
   echo "Usage:"
-  echo "  $0 <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE]"
+  echo "  $0 <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE] [--custom-bind-host IP]"
   echo "  $0 <instance> stop"
   echo "  $0 <instance> restart"
   echo "  $0 <instance> status"
@@ -96,6 +96,7 @@ OPENCLAW_IMAGE=$OPENCLAW_IMAGE
 OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND:-lan}
 OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
 OPENCLAW_HOME_VOLUME=${OPENCLAW_HOME_VOLUME:-}
+OPENCLAW_CUSTOM_BIND_HOST=${OPENCLAW_CUSTOM_BIND_HOST:-}
 EOF
   echo "Instance config saved to $env_file"
 }
@@ -141,6 +142,7 @@ cmd_start() {
   local bridge_port=""
   local allow_insecure_ws=""
   local image=""
+  local custom_bind_host=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -148,6 +150,7 @@ cmd_start() {
       --bridge-port)       bridge_port="$2";  shift 2 ;;
       --allow-insecure-ws) allow_insecure_ws="1"; shift ;;
       --image)             image="$2"; shift 2 ;;
+      --custom-bind-host)  custom_bind_host="$2"; shift 2 ;;
       *) fail "Unknown option: $1" ;;
     esac
   done
@@ -162,11 +165,13 @@ cmd_start() {
     if [[ -n "$bridge_port" ]]; then OPENCLAW_BRIDGE_PORT="$bridge_port"; fi
     if [[ -n "$allow_insecure_ws" ]]; then OPENCLAW_ALLOW_INSECURE_PRIVATE_WS="1"; fi
     if [[ -n "$image" ]]; then OPENCLAW_IMAGE="$image"; fi
+    if [[ -n "$custom_bind_host" ]]; then OPENCLAW_CUSTOM_BIND_HOST="$custom_bind_host"; fi
   else
     export OPENCLAW_GATEWAY_PORT="${gateway_port:-18789}"
     export OPENCLAW_BRIDGE_PORT="${bridge_port:-18790}"
     export OPENCLAW_ALLOW_INSECURE_PRIVATE_WS="${allow_insecure_ws}"
     export OPENCLAW_IMAGE="${image:-openclaw:local}"
+    export OPENCLAW_CUSTOM_BIND_HOST="${custom_bind_host}"
   fi
 
   # Per-instance isolated directories and volumes.
@@ -234,6 +239,25 @@ cmd_start() {
   run_dir="$(instance_run_dir "$instance")"
   echo "==> Starting instance '$instance' (run dir: $run_dir)"
   bash "$run_dir/docker-setup.sh"
+
+  # Fix controlUi.allowedOrigins to use the external (host) port.
+  # onboard seeds origins with the container-internal port (18789), but
+  # browsers reach the gateway through the host-mapped port which may differ.
+  if [[ "${OPENCLAW_GATEWAY_BIND}" != "loopback" ]]; then
+    local origin_json
+    origin_json="[\"http://localhost:${OPENCLAW_GATEWAY_PORT}\",\"http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}\"]"
+
+    local custom_host="${OPENCLAW_CUSTOM_BIND_HOST:-}"
+    if [[ -n "$custom_host" ]]; then
+      origin_json="[\"http://localhost:${OPENCLAW_GATEWAY_PORT}\",\"http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}\",\"http://${custom_host}:${OPENCLAW_GATEWAY_PORT}\"]"
+    fi
+
+    echo ""
+    echo "==> Fixing controlUi.allowedOrigins to external port $OPENCLAW_GATEWAY_PORT"
+    compose_cmd run --rm openclaw-cli \
+      config set gateway.controlUi.allowedOrigins "$origin_json" --strict-json >/dev/null
+    echo "  Set gateway.controlUi.allowedOrigins to $origin_json"
+  fi
 }
 
 cmd_stop() {
