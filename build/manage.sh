@@ -27,6 +27,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 INSTANCES_DIR="$SCRIPT_DIR/instances"
 PRECHECK_SCRIPT="$SCRIPT_DIR/pre-check.sh"
 
+# Ensure HOME is available — some environments (sudo without -H, cron,
+# non-login shells) may leave it unset.
+if [[ -z "${HOME:-}" ]]; then
+  HOME="$(eval echo ~"$(whoami)" 2>/dev/null || getent passwd "$(id -un)" | cut -d: -f6 || echo "/root")"
+  export HOME
+fi
+
 fail() {
   echo "ERROR: $*" >&2
   exit 1
@@ -160,6 +167,10 @@ cmd_start() {
   # Per-instance isolated directories and volumes.
   export OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-$HOME/.openclaw-${instance}}"
   export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-$HOME/.openclaw-${instance}/workspace}"
+
+  if [[ -z "$OPENCLAW_CONFIG_DIR" || -z "$OPENCLAW_WORKSPACE_DIR" ]]; then
+    fail "OPENCLAW_CONFIG_DIR or OPENCLAW_WORKSPACE_DIR resolved to empty. Check that \$HOME is set (current HOME='${HOME:-}')."
+  fi
   export OPENCLAW_ALLOW_INSECURE_PRIVATE_WS="${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}"
   export INSTANCE_NAME="$instance"
   export COMPOSE_PROJECT_NAME="openclaw-${instance}"

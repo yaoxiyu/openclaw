@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"
+
+# Ensure HOME is available (sudo without -H, cron, non-login shells, etc.).
+if [[ -z "${HOME:-}" ]]; then
+  HOME="$(eval echo ~"$(whoami)" 2>/dev/null || getent passwd "$(id -un)" | cut -d: -f6 || echo "/root")"
+  export HOME
+fi
+
 IMAGE_NAME="${OPENCLAW_IMAGE:-openclaw:local}"
 EXTRA_MOUNTS="${OPENCLAW_EXTRA_MOUNTS:-}"
 HOME_VOLUME_NAME="${OPENCLAW_HOME_VOLUME:-}"
