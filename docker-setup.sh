@@ -350,6 +350,9 @@ done
 # force a known-safe gateway service definition (no docker.sock mount).
 BASE_COMPOSE_ARGS=("${COMPOSE_ARGS[@]}")
 COMPOSE_HINT="docker compose"
+if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+  COMPOSE_HINT+=" -p ${COMPOSE_PROJECT_NAME}"
+fi
 for compose_file in "${COMPOSE_FILES[@]}"; do
   COMPOSE_HINT+=" -f ${compose_file}"
 done
@@ -419,6 +422,8 @@ if [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
     -t "$IMAGE_NAME" \
     -f "$ROOT_DIR/Dockerfile" \
     "$ROOT_DIR"
+elif docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+  echo "==> Using existing local image: $IMAGE_NAME"
 else
   echo "==> Pulling Docker image: $IMAGE_NAME"
   if ! docker pull "$IMAGE_NAME"; then
