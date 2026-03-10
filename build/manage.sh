@@ -9,6 +9,7 @@ set -euo pipefail
 #   ./manage.sh <instance> restart
 #   ./manage.sh <instance> status
 #   ./manage.sh <instance> logs     [-- EXTRA_ARGS...]
+#   ./manage.sh <instance> exec    [--cli] [--sh] [COMMAND...]
 #   ./manage.sh list
 #
 # Examples:
@@ -17,6 +18,9 @@ set -euo pipefail
 #   ./manage.sh prod restart
 #   ./manage.sh prod stop
 #   ./manage.sh prod logs -- -f --tail 100
+#   ./manage.sh prod exec
+#   ./manage.sh prod exec --cli
+#   ./manage.sh prod exec node -e "console.log('hello')"
 #   ./manage.sh list
 #
 # Each instance gets its own run directory under instances/<name>/ with
@@ -46,6 +50,7 @@ usage() {
   echo "  $0 <instance> restart"
   echo "  $0 <instance> status"
   echo "  $0 <instance> logs    [-- EXTRA_ARGS...]"
+  echo "  $0 <instance> exec    [--cli] [--sh] [COMMAND...]"
   echo "  $0 <instance> delete  [--volumes]"
   echo "  $0 list"
   exit 1
@@ -276,6 +281,31 @@ cmd_logs() {
   compose_cmd logs "$@" openclaw-gateway
 }
 
+cmd_exec() {
+  local instance="$1"
+  shift
+  load_instance_env "$instance"
+  export INSTANCE_NAME="$instance"
+
+  local service="openclaw-gateway"
+  local shell="bash"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cli)   service="openclaw-cli"; shift ;;
+      --sh)    shell="sh"; shift ;;
+      *) break ;;
+    esac
+  done
+
+  if [[ $# -gt 0 ]]; then
+    echo "==> Executing in '$instance' ($service): $*"
+    compose_cmd exec "$service" "$@"
+  else
+    echo "==> Opening $shell shell in '$instance' ($service)"
+    compose_cmd exec "$service" "$shell"
+  fi
+}
+
 cmd_delete() {
   local instance="$1"
   shift
@@ -380,6 +410,7 @@ case "$COMMAND" in
   restart) cmd_restart "$INSTANCE" ;;
   status)  cmd_status  "$INSTANCE" ;;
   logs)    cmd_logs    "$INSTANCE" "$@" ;;
+  exec)    cmd_exec    "$INSTANCE" "$@" ;;
   delete)  cmd_delete  "$INSTANCE" "$@" ;;
-  *)       fail "Unknown command: $COMMAND. Use start|stop|restart|status|logs|delete." ;;
+  *)       fail "Unknown command: $COMMAND. Use start|stop|restart|status|logs|exec|delete." ;;
 esac
