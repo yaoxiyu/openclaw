@@ -6,7 +6,7 @@ set -euo pipefail
 # Usage:
 #   ./manage.sh <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE] [--custom-bind-host IP]
 #   ./manage.sh <instance> stop
-#   ./manage.sh <instance> restart
+#   ./manage.sh <instance> restart  [--rebuild]
 #   ./manage.sh <instance> status
 #   ./manage.sh <instance> logs     [-- EXTRA_ARGS...]
 #   ./manage.sh <instance> exec    [--cli] [--sh] [COMMAND...]
@@ -16,6 +16,7 @@ set -euo pipefail
 #   ./manage.sh prod start --gateway-port 18789 --bridge-port 18790
 #   ./manage.sh dev  start --gateway-port 28789 --bridge-port 28790
 #   ./manage.sh prod restart
+#   ./manage.sh prod restart --rebuild
 #   ./manage.sh prod stop
 #   ./manage.sh prod logs -- -f --tail 100
 #   ./manage.sh prod exec
@@ -47,7 +48,7 @@ usage() {
   echo "Usage:"
   echo "  $0 <instance> start   [--gateway-port PORT] [--bridge-port PORT] [--allow-insecure-ws] [--image IMAGE] [--custom-bind-host IP]"
   echo "  $0 <instance> stop"
-  echo "  $0 <instance> restart"
+  echo "  $0 <instance> restart [--rebuild]"
   echo "  $0 <instance> status"
   echo "  $0 <instance> logs    [-- EXTRA_ARGS...]"
   echo "  $0 <instance> exec    [--cli] [--sh] [COMMAND...]"
@@ -192,22 +193,9 @@ cmd_start() {
     fi
   fi
 
-  # ── Image build (from shared build/ directory, not instance dir) ──
-  # When using default "openclaw:local", build the image from the shared
-  # directory (which has the Dockerfile + source context), then re-tag
-  # per instance so docker-setup.sh's "elif image exists" branch is used.
-  local instance_image_tag="openclaw:${instance}"
-  if [[ "$OPENCLAW_IMAGE" == "openclaw:local" ]]; then
-    echo "==> Building Docker image from repo root: $instance_image_tag"
-    docker build \
-      --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
-      --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
-      --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
-      -t "$instance_image_tag" \
-      -f "$REPO_ROOT/Dockerfile" \
-      "$REPO_ROOT"
-    export OPENCLAW_IMAGE="$instance_image_tag"
-  fi
+  # All instances share the same image (default: openclaw:local).
+  # docker-setup.sh handles building/pulling — first instance builds,
+  # subsequent instances reuse the cached image.
 
   echo "============================================"
   echo "  Instance:       $instance"
@@ -272,11 +260,33 @@ cmd_stop() {
 
 cmd_restart() {
   local instance="$1"
+  shift
   load_instance_env "$instance"
   export INSTANCE_NAME="$instance"
 
-  echo "==> Restarting instance '$instance' (project: openclaw-${instance})"
-  compose_cmd restart
+  local rebuild=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --rebuild) rebuild=true; shift ;;
+      *) fail "Unknown option: $1" ;;
+    esac
+  done
+
+  if [[ "$rebuild" == true ]]; then
+    echo "==> Rebuilding image before restart"
+    docker build \
+      --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
+      --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
+      --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
+      -t "${OPENCLAW_IMAGE}" \
+      -f "$REPO_ROOT/Dockerfile" \
+      "$REPO_ROOT"
+    echo "==> Recreating containers with new image"
+    compose_cmd up -d --force-recreate openclaw-gateway
+  else
+    echo "==> Restarting instance '$instance' (project: openclaw-${instance})"
+    compose_cmd restart
+  fi
   echo "Instance '$instance' restarted."
 }
 
@@ -431,7 +441,7 @@ fi
 case "$COMMAND" in
   start)   cmd_start   "$INSTANCE" "$@" ;;
   stop)    cmd_stop    "$INSTANCE" ;;
-  restart) cmd_restart "$INSTANCE" ;;
+  restart) cmd_restart "$INSTANCE" "$@" ;;
   status)  cmd_status  "$INSTANCE" ;;
   logs)    cmd_logs    "$INSTANCE" "$@" ;;
   exec)    cmd_exec    "$INSTANCE" "$@" ;;
