@@ -112,7 +112,7 @@ setup_instance_run_dir() {
   mkdir -p "$run_dir"
 
   local file
-  for file in docker-setup.sh docker-compose.yml Dockerfile.sandbox; do
+  for file in docker-setup.sh docker-compose.yml Dockerfile Dockerfile.sandbox; do
     if [[ -e "$REPO_ROOT/$file" && ! -e "$run_dir/$file" ]]; then
       ln -s "$REPO_ROOT/$file" "$run_dir/$file"
     fi
