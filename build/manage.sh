@@ -199,9 +199,24 @@ cmd_start() {
     fi
   fi
 
-  # All instances share the same image (default: openclaw:local).
-  # docker-setup.sh handles building/pulling — first instance builds,
-  # subsequent instances reuse the cached image.
+  # Build the shared image from repo root (correct Dockerfile + context).
+  # docker-setup.sh runs from the instance dir where symlinks break Docker
+  # BuildKit, so we pre-build here and let docker-setup.sh skip via the
+  # "existing local image" branch.
+  if [[ "$OPENCLAW_IMAGE" == "openclaw:local" ]]; then
+    if ! docker image inspect "openclaw:local" >/dev/null 2>&1; then
+      echo "==> Building shared Docker image: openclaw:local"
+      docker build \
+        --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
+        --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
+        --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
+        -t "openclaw:local" \
+        -f "$REPO_ROOT/Dockerfile" \
+        "$REPO_ROOT"
+    else
+      echo "==> Reusing existing shared image: openclaw:local"
+    fi
+  fi
 
   echo "============================================"
   echo "  Instance:       $instance"
