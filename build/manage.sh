@@ -113,8 +113,14 @@ setup_instance_run_dir() {
 
   local file
   for file in docker-setup.sh docker-compose.yml Dockerfile Dockerfile.sandbox; do
-    if [[ -e "$REPO_ROOT/$file" && ! -e "$run_dir/$file" ]]; then
-      ln -s "$REPO_ROOT/$file" "$run_dir/$file"
+    if [[ -e "$REPO_ROOT/$file" ]]; then
+      # Recreate symlink if missing or broken.
+      if [[ -L "$run_dir/$file" && ! -e "$run_dir/$file" ]]; then
+        rm -f "$run_dir/$file"
+      fi
+      if [[ ! -e "$run_dir/$file" ]]; then
+        ln -s "$REPO_ROOT/$file" "$run_dir/$file"
+      fi
     fi
   done
 }
