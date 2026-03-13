@@ -205,8 +205,8 @@ cmd_start() {
   # "existing local image" branch.
   if [[ "$OPENCLAW_IMAGE" == "openclaw:local" ]]; then
     if ! docker image inspect "openclaw:local" >/dev/null 2>&1; then
-      echo "==> Building shared Docker image: openclaw:local"
-      docker build \
+      echo "==> Building shared Docker image: openclaw:local (IO priority: idle)"
+      ionice -c3 nice -n 19 docker build \
         --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
         --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
         --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
@@ -294,8 +294,8 @@ cmd_restart() {
   done
 
   if [[ "$rebuild" == true ]]; then
-    echo "==> Rebuilding image before restart"
-    docker build \
+    echo "==> Rebuilding image before restart (IO priority: idle)"
+    ionice -c3 nice -n 19 docker build \
       --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
       --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
       --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
