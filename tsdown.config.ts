@@ -116,12 +116,12 @@ export default defineConfig([
       "line/template-messages": "src/line/template-messages.ts",
     },
   }),
-  ...pluginSdkEntrypoints.map((entry) =>
-    nodeBuildConfig({
-      entry: `src/plugin-sdk/${entry}.ts`,
-      outDir: "dist/plugin-sdk",
-    }),
-  ),
+  nodeBuildConfig({
+    entry: Object.fromEntries(
+      pluginSdkEntrypoints.map((name) => [name, `src/plugin-sdk/${name}.ts`]),
+    ),
+    outDir: "dist/plugin-sdk",
+  }),
   nodeBuildConfig({
     entry: "src/extensionAPI.ts",
   }),
