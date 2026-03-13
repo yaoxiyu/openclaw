@@ -10,9 +10,12 @@ set -euo pipefail
 #   ./manage.sh <instance> status
 #   ./manage.sh <instance> logs     [-- EXTRA_ARGS...]
 #   ./manage.sh <instance> exec    [--cli] [--sh] [COMMAND...]
+#   ./manage.sh build              [--image TAG]
 #   ./manage.sh list
 #
 # Examples:
+#   ./manage.sh build
+#   ./manage.sh build --image openclaw:custom
 #   ./manage.sh prod start --gateway-port 18789 --bridge-port 18790
 #   ./manage.sh dev  start --gateway-port 28789 --bridge-port 28790
 #   ./manage.sh prod restart
@@ -53,6 +56,7 @@ usage() {
   echo "  $0 <instance> logs    [-- EXTRA_ARGS...]"
   echo "  $0 <instance> exec    [--cli] [--sh] [COMMAND...]"
   echo "  $0 <instance> delete  [--volumes]"
+  echo "  $0 build             [--image TAG]"
   echo "  $0 list"
   exit 1
 }
@@ -127,6 +131,26 @@ setup_instance_run_dir() {
 
 # Build compose args pointing to the instance's run directory.
 # Automatically includes overlay files if they were generated during setup.
+cmd_build() {
+  local image_tag="openclaw:local"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --image) image_tag="$2"; shift 2 ;;
+      *) fail "Unknown option: $1" ;;
+    esac
+  done
+
+  echo "==> Building Docker image: $image_tag (IO priority: idle)"
+  ionice -c3 nice -n 19 docker build \
+    --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES:-}" \
+    --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS:-}" \
+    --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
+    -t "$image_tag" \
+    -f "$REPO_ROOT/Dockerfile" \
+    "$REPO_ROOT"
+  echo "Image '$image_tag' built successfully."
+}
+
 compose_cmd() {
   local run_dir
   run_dir="$(instance_run_dir "$INSTANCE_NAME")"
@@ -444,6 +468,12 @@ fi
 
 if [[ "$1" == "list" ]]; then
   cmd_list
+  exit 0
+fi
+
+if [[ "$1" == "build" ]]; then
+  shift
+  cmd_build "$@"
   exit 0
 fi
 
